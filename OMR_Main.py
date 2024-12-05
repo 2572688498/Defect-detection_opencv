@@ -7,7 +7,8 @@ class DefectDetection:
     def __init__(self, image_size=(500, 500), threshold_value=130, max_value=255, inv_threshold_value=50,
                  inv_max_value=255,
                  canny_threshold1=100, canny_threshold2=70, con_color=(0, 0, 255), con_thickness=1,
-                 font=cv2.FONT_HERSHEY_SIMPLEX, output_folder='Output Images',white=(255, 255, 255),black = (0, 0, 0),green= (0, 255, 0),red= (0, 0, 255),stack_img_size= (200, 200)):
+                 font=cv2.FONT_HERSHEY_SIMPLEX, output_folder='Output Images',white=(255, 255, 255),black = (0, 0, 0),green= (0, 255, 0),red= (0, 0, 255),stack_img_size= (200, 200),min_area=100
+                 ):
         # Initialize parameters
         self.WHITE=white
         self.BLACK=black
@@ -26,6 +27,7 @@ class DefectDetection:
         self.CON_THICKNESS = con_thickness
         self.font = font
         self.output_folder = output_folder
+        self.MIN_AREA = min_area
     #处理图片并存储
     def process_image(self, file_path):
         # 1:读数据
@@ -45,19 +47,33 @@ class DefectDetection:
         edged = cv2.Canny(img_erosion, self.THRESHOLD1, self.THRESHOLD2)
         # 7:轮廓
         contours, h = cv2.findContours(thresh_inv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        # Get number of contours (excluding the background contour)
-        num_of_con = str(len(contours) - 1)
+        # 8: 创建修复掩膜
+        mask = np.zeros_like(imageOri)  # 创建一个与原图同样大小的黑色掩膜
 
-        # 情况一：有缺陷
+        for contour in contours:
+            # 计算轮廓的面积
+            area = cv2.contourArea(contour)
+            if area < self.MIN_AREA:
+                # 如果面积小于 MIN_AREA（100像素），则将该区域标记为掩膜
+                cv2.drawContours(mask, [contour], -1, self.WHITE, thickness=cv2.FILLED)
+            else :
+                print(area)
+        # 9: 修复小缺陷区域
+        image_repaired = cv2.inpaint(imageOri, mask[:, :, 0], 3, flags=cv2.INPAINT_TELEA)
+
+        # 10: 获取缺陷数量
+        num_of_con = len([contour for contour in contours if cv2.contourArea(contour) >= self.MIN_AREA]) - 1
+
+        # 情况一：修复后仍检测出缺陷
         if int(num_of_con) != 0:
             for i in range(int(num_of_con)):
-                highlighted_img = cv2.drawContours(imageOri, contours, i, self.CON_COLOR, self.CON_THICKNESS)
+                highlighted_img = cv2.drawContours(image_repaired, contours, i, self.CON_COLOR, self.CON_THICKNESS)
 
             highlighted_img = cv2.putText(highlighted_img, f'Approximately {num_of_con} defect(s) detected', (5, 15),
                                               self.font, 0.5, self.GREEN, 1, cv2.LINE_AA)
         # 情况二：无缺陷
         else:
-            highlighted_img = cv2.putText(imageOri, 'Unable to detect defects!', (5, 15), self.font, 0.5, self.RED, 2,
+            highlighted_img = cv2.putText(image_repaired, 'Unable to detect defects!', (5, 15), self.font, 0.5, self.RED, 2,
                                               cv2.LINE_AA)
         if file.endswith('.jpg'):
             cv2.imwrite('Output Images/{}_DEFECTS_HIGHLIGHTED.jpg'.format(file.split('.')[0]), highlighted_img)  # 存储为JPG格式的图片
@@ -75,7 +91,7 @@ class DefectDetection:
                 if file.endswith('.jpg'):
                     cv2.imshow(f'JPG Image: {file}', img)
             #仅显示jpeg格式
-            else:
+            else :
                 if file.endswith('.jpeg'):
                     cv2.imshow(f'JPEG Image: {file}', img)
         cv2.waitKey(0)
@@ -91,12 +107,13 @@ if __name__ == "__main__":
         path = 'images/' + file
         detector.process_image(path)
     detector.display_processed_images(0)
-    '''
+     '''
     # 检测显示jpg格式图片
     for i in range(1, 11):
         file = f's{i}.jpg'
         path = 'images/' + file
         detector.process_image(path)
     detector.display_processed_images(1)
+
 
 
